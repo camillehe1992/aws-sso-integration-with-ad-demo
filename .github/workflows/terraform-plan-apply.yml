@@ -1,0 +1,218 @@
+name: Terraform Plan and Apply
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "terraform/**"
+  pull_request:
+    branches: [main]
+  # allow manual trigger from GitHub Actions UI
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: The environment to deploy to
+        default: dev
+        enum:
+          - dev
+          - prod
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+env:
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ROLE_TO_ASSUME: ${{ secrets.ROLE_TO_ASSUME }}
+  GITHUB_REPO_NAME: ${{ github.event.repository.name }}
+  # set default environment to dev for auto triggered workflows
+  ENVIRONMENT: ${{ inputs.environment || 'dev' }}
+  TRIGGER_TYPE: ${{ github.event_name }}
+  # Terraform state file s3 bucket name
+  S3_TF_BUCKET_NAME: terraform-state-$AWS_ACCOUNT_ID-$AWS_REGION
+  # Terraform state file key
+  S3_TF_KEY: $GITHUB_REPO_NAME/$ENVIRONMENT/terraform.tfstate
+
+jobs:
+  terraform-plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'dev' }}
+    defaults:
+      run:
+        working-directory: ./terraform
+    outputs:
+      exit_code: ${{ steps.plan.outputs.exit_code }}
+      plan_status: ${{ steps.plan.outputs.plan_status }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
+          terraform_version: "1.14.0"
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Init
+        run: |
+          terraform init -reconfigure \
+            -backend-config="bucket=$S3_TF_BUCKET_NAME" \
+            -backend-config="key=$S3_TF_KEY" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="encrypt=true" \
+            -backend-config="use_lockfile=true"
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        continue-on-error: true
+        run: |
+          # Capture both stdout and stderr, and get exit code
+          exit_code=0
+          plan_output=$(terraform plan -detailed-exitcode -no-color -out tfplan 2>&1) || exit_code=$?
+          echo "Terraform Plan Exit Code: $exit_code"
+
+          case $exit_code in
+            0) echo "✅ No changes detected"; plan_status="✅ No Changes Detected" ;;
+            1) echo "❌ Plan failed"; plan_status="❌ Plan Failed" ;;
+            2) echo "✅ Changes detected"; plan_status="✅ Changes Detected" ;;
+            *) echo "⚠️  Unexpected exit code: $exit_code"; plan_status="⚠️ Unknown Exit Code" ;;
+          esac
+
+          echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
+          echo "plan_status=$plan_status" >> $GITHUB_OUTPUT
+
+          # Format plan output for GitHub summary
+          {
+            echo "## 🚀 Terraform Plan Summary"
+            echo ""
+            echo "**Environment:** $ENVIRONMENT"
+            echo "**Trigger On:** $TRIGGER_TYPE"
+            echo "**Exit Code:** $exit_code"
+            echo "**Status:** $plan_status"
+            echo ""
+            echo "### 📋 Plan Details"
+            echo ""
+            echo '```terraform'
+            echo "$plan_output"
+            echo '```'
+            echo ""
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Plan Artifact
+        if: steps.plan.outputs.exit_code == '2'
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ github.run_id }}
+          path: ./terraform/tfplan
+          retention-days: 1
+
+  terraform-apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: terraform-plan
+    # Requires approval if environment protection is configured
+    environment: ${{ inputs.environment || 'dev' }}
+    if: |
+      needs.terraform-plan.outputs.exit_code == '2' &&
+      (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+    defaults:
+      run:
+        working-directory: ./terraform
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
+          terraform_version: "1.14.0"
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        run: |
+          terraform init -reconfigure \
+            -backend-config="bucket=$S3_TF_BUCKET_NAME" \
+            -backend-config="key=$S3_TF_KEY" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="encrypt=true" \
+            -backend-config="use_lockfile=true"
+
+      - name: Download Plan Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan-${{ github.run_id }}
+          path: ./terraform/
+
+      - name: Terraform Apply
+        id: apply
+        run: |
+          echo "🚀 Starting Terraform Apply..."
+          echo "Plan Status: ${{ needs.terraform-plan.outputs.plan_status }}"
+          echo "Environment: $ENVIRONMENT"
+
+          # Execute terraform apply
+          echo "🔥 Executing terraform apply..."
+          apply_output=$(terraform apply -no-color -auto-approve tfplan 2>&1)
+          apply_exit_code=$?
+
+          echo "Apply Exit Code: $apply_exit_code"
+          echo "apply_exit_code=$apply_exit_code" >> $GITHUB_OUTPUT
+
+          # Create apply summary
+          {
+            echo "## 🚀 Terraform Apply Summary"
+            echo ""
+            echo "**Environment:** $ENVIRONMENT"
+            echo "**Status:** $([ $apply_exit_code -eq 0 ] && echo "✅ Apply Successful" || echo "❌ Apply Failed")"
+            echo "**Exit Code:** $apply_exit_code"
+            echo "**Timestamp:** $(date '+%Y-%m-%d %H:%M:%S UTC')"
+            echo ""
+            echo "### 📋 Apply Output"
+            echo ""
+            echo '```terraform'
+            echo "$apply_output"
+            echo '```'
+            echo ""
+          } >> $GITHUB_STEP_SUMMARY
+
+          if [ $apply_exit_code -ne 0 ]; then
+            echo "❌ Terraform apply failed"
+            exit 1
+          fi
+
+          echo "✅ Terraform apply completed successfully"
+
+      - name: Post Apply Summary
+        if: always()
+        run: |
+          {
+            echo "### 🔍 Apply Summary"
+            echo "- Apply Status: ${{ steps.apply.outcome }}"
+            echo "- Exit Code: ${{ steps.apply.outputs.apply_exit_code }}"
+            echo "- Environment: $ENVIRONMENT"
+            echo "- Timestamp: $(date '+%Y-%m-%d %H:%M:%S UTC')"
+          } >> $GITHUB_STEP_SUMMARY

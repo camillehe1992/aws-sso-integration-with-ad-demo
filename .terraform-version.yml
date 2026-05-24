@@ -1,0 +1,31 @@
+# Terraform Version Configuration
+
+# Specify the Terraform version to use
+terraform_version: "1.14.0"
+
+# Optional: specify required providers and their versions
+required_providers:
+  aws:
+    source: "hashicorp/aws"
+    version: "~> 6.35.0"
+
+  azurerm:
+    source: "hashicorp/azurerm"
+    version: "~> 3.0"
+
+  google:
+    source: "hashicorp/google"
+    version: "~> 5.0"
+
+# Optional: specify Terraform provider lock file settings
+provider_locks:
+  # Enable provider lock file
+  enabled: true
+
+  # Platform targets for provider binaries
+  platforms:
+    - linux_amd64
+    - linux_arm64
+    - darwin_amd64
+    - darwin_arm64
+    - windows_amd64

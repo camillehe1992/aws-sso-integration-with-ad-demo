@@ -1,0 +1,71 @@
+repos:
+  - repo: local
+    hooks:
+      - id: terraform-fmt
+        name: Terraform Format
+        entry: bash -c 'cd terraform && terraform fmt -recursive'
+        language: system
+        files: \.tf$
+        pass_filenames: false
+
+      - id: terraform-validate
+        name: Terraform Validate
+        entry: bash -c 'cd terraform && terraform validate'
+        language: system
+        files: \.tf$
+        pass_filenames: false
+
+      - id: terraform-docs-gen
+        name: Generate Terraform Docs
+        entry: bash -c 'cd terraform && terraform-docs markdown . --config ../.terraform-docs.yml > ../docs/terraform.md'
+        language: system
+        files: \.tf$
+        pass_filenames: false
+
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.48.0
+    hooks:
+      - id: markdownlint
+        args:
+          - --config=.markdownlint.json
+          - --fix
+        exclude: README.md # Exclude the main README file
+
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.88.0
+    hooks:
+      - id: terraform_tflint
+        name: Terraform TFLint
+        description: Lint Terraform files
+        args:
+          - --args=--init
+
+      - id: terraform_checkov
+        name: Terraform Checkov
+        description: Static analysis of Terraform
+        args:
+          - --args=--quiet
+          - --args=--soft-fail
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-json
+      - id: check-toml
+      - id: check-xml
+
+# Configuration for specific hooks
+exclude: |
+  (?x)^(
+    \.terraform/.*|
+    \.git/.*|
+    node_modules/.*|
+    vendor/.*|
+    \.idea/.*|
+    \.vscode/.*
+  )$
