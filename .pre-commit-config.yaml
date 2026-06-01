@@ -15,12 +15,12 @@ repos:
         files: \.tf$
         pass_filenames: false
 
-      - id: terraform-docs-gen
-        name: Generate Terraform Docs
-        entry: bash -c 'cd terraform && terraform-docs markdown . --config ../.terraform-docs.yml > ../docs/terraform.md'
-        language: system
-        files: \.tf$
-        pass_filenames: false
+      # - id: terraform-docs-gen
+      #   name: Generate Terraform Docs
+      #   entry: bash -c 'cd terraform && terraform-docs markdown . --config ../.terraform-docs.yml > ../docs/terraform.md'
+      #   language: system
+      #   files: \.tf$
+      #   pass_filenames: false
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.48.0
