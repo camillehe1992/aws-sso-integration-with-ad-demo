@@ -1,27 +1,34 @@
-# Terraform Project Template
+# AWS IAM Identity Center + Okta (SAML & SCIM) Demo
 
-A comprehensive template repository for managing cloud infrastructure with Terraform.
-This template provides a standardized structure with built-in linting, formatting, and
-documentation tools.
+This repository is a demonstration of configuring **SAML** (SSO) and **SCIM** (user/group provisioning) with **Okta** and **AWS IAM Identity Center** (formerly AWS SSO).
+
+It includes:
+
+- Step-by-step guides for Okta ↔ IAM Identity Center integration (SAML + SCIM)
+- Terraform units for a reusable AWS baseline:
+  - `network`: VPC, subnets, routing, optional NAT modes
+  - `identity-center`: IAM Identity Center permission sets management
 
 ## 📁 Project Structure
 
 ```bash
-├── .gitignore                    # Git ignore rules
-├── .github/workflows/           # GitHub Actions workflows
-├── README.md                    # Project documentation
-├── .pre-commit-config.yaml      # Pre-commit hooks configuration
-├── justfile                     # Task runner commands
-├── .markdownlint.json           # Markdown linting rules
-├── .markdownlintignore.yaml     # Markdown linting ignore files
-├── .terraform-lint.yml          # Terraform linting configuration
-├── .terraform-docs.yml          # Terraform documentation generator config
-├── .terraform-version.yml       # Terraform version specification
-├── terraform/                   # Terraform infrastructure code
-├── src/                         # Application source code
-├── docs/                        # Project documentation
-└── scripts/                     # Utility scripts
+├── terraform/                      # Terraform units
+│   ├── network/                    # VPC baseline (Console “VPC and more” style)
+│   └── identity-center/            # Permission sets for an existing Identity Center instance
+├── docs/                           # Integration guides and diagrams
+├── justfile                        # Task runner commands (init/plan/apply/etc.)
+├── .env.sample                     # Example environment variables
+├── .pre-commit-config.yaml         # Pre-commit hooks configuration
+└── .github/workflows/              # CI workflows (plan/apply)
 ```
+
+## 📚 Documentation
+
+- Okta ↔ IAM Identity Center (SAML + SCIM)
+  - [aws-identity-center-okta-integration.md](file:///Users/heyachao/Documents/trae_projects/aws-sso-integration-with-ad-demo/docs/aws-identity-center-okta-integration.md)
+  - [aws-identity-center-okta-integration.zh.md](file:///Users/heyachao/Documents/trae_projects/aws-sso-integration-with-ad-demo/docs/aws-identity-center-okta-integration.zh.md)
+- IAM Identity Center ↔ Active Directory (console demo)
+  - [aws-identity-center-ad-integration.zh.md](file:///Users/heyachao/Documents/trae_projects/aws-sso-integration-with-ad-demo/docs/aws-identity-center-ad-integration.zh.md)
 
 ## 🚀 Quick Start
 
@@ -33,175 +40,78 @@ documentation tools.
 
 ### Setup
 
-1. **Clone and initialize the repository:**
+1. **Clone the repository:**
    ```bash
    git clone <your-repo-url>
-   cd terraform-project-template
+   cd aws-sso-integration-with-ad-demo
    ```
 
-2. **Install pre-commit hooks:**
+2. **Create a `.env` file:**
+   ```bash
+   cp .env.sample .env
+   ```
+
+   Update at least:
+   - `TF_STATE_BUCKET`: your Terraform remote state S3 bucket
+   - `AWS_PROFILE`: your local AWS profile (or rely on env credentials in CI)
+
+3. **Install pre-commit hooks (optional but recommended):**
    ```bash
    just install-hooks
    ```
 
-3. **Initialize Terraform:**
+4. **Plan/apply a Terraform unit:**
    ```bash
-   just init
+   TF_UNIT=network TF_ENV=dev just plan
+   TF_UNIT=network TF_ENV=dev just apply
    ```
 
-4. **Run linting and formatting:**
-   ```bash
-   just lint
-   just fmt
-   ```
+### Units
+
+- `network`: baseline VPC networking. See [network README](file:///Users/heyachao/Documents/trae_projects/aws-sso-integration-with-ad-demo/terraform/network/README.md)
+- `identity-center`: permission sets for an existing IAM Identity Center instance. See [identity-center README](file:///Users/heyachao/Documents/trae_projects/aws-sso-integration-with-ad-demo/terraform/identity-center/README.md)
 
 ## 🛠️ Available Commands
 
-Use the `justfile` for common development tasks:
+The `justfile` provides common tasks. Most Terraform commands accept:
+
+- `TF_UNIT` (default: `network`)
+- `TF_ENV` (default: `dev`)
+
+Examples:
 
 ```bash
-# Show all available commands
-just
+# Format and validate
+TF_UNIT=network TF_ENV=dev just fmt
+TF_UNIT=network TF_ENV=dev just validate
 
-# Initialize Terraform
-just init
+# Plan/apply
+TF_UNIT=identity-center TF_ENV=dev just plan
+TF_UNIT=identity-center TF_ENV=dev just apply
 
-# Format Terraform code
-just fmt
-
-# Validate Terraform configuration
-just validate
-
-# Plan infrastructure changes
-just plan
-
-# Apply infrastructure changes
-just apply
-
-# Destroy infrastructure
-just destroy
-
-# Run all linting and checks
-just lint
-
-# Generate documentation
-just docs
-
-# Clean up temporary files
-just clean
-
-# Show Terraform version
-just version
+# Destroy (dangerous)
+TF_UNIT=network TF_ENV=dev just quick-destroy
 ```
-
-## 📋 Configuration Files
-
-### Linting and Formatting
-
-- **`.markdownlint.json`**: Configuration for Markdown linting rules
-- **`.terraform-lint.yml`**: Terraform-specific linting configuration
-- **`.pre-commit-config.yaml`**: Pre-commit hooks for code quality
-
-### Documentation
-
-- **`.terraform-docs.yml`**: Configuration for auto-generating Terraform documentation
-- **`docs/`**: Directory for project documentation
-
-### Version Management
-
-- **`.terraform-version.yml`**: Specifies Terraform and provider versions
-
-## 🏗️ Infrastructure Organization
-
-### Terraform Directory (`terraform/`)
-
-Place all your Terraform infrastructure code here. Consider organizing by:
-
-- Environment (dev, staging, prod)
-- Resource type (compute, networking, storage)
-- Service or application
-
-### Source Code (`src/`)
-
-For application code, configuration files, or scripts that support your infrastructure.
-
-### Documentation (`docs/`)
-
-Project documentation, architecture diagrams, and operational guides.
-
-### Scripts (`scripts/`)
-
-Utility scripts for deployment, maintenance, or operational tasks.
 
 ## 🔧 Development Workflow
 
-1. **Create a new feature branch:**
-   ```bash
-   git checkout -b feature/my-new-feature
-   ```
+```bash
+# Lint/format
+just lint
+just fmt
 
-2. **Make your changes to Terraform code**
+# Validate Terraform for a unit
+TF_UNIT=network just validate
 
-3. **Run formatting and validation:**
-   ```bash
-   just fmt
-   just validate
-   ```
+# Plan changes
+TF_UNIT=network TF_ENV=dev just plan
+```
 
-4. **Run linting:**
-   ```bash
-   just lint
-   ```
+## 🔒 Notes
 
-5. **Plan your changes:**
-   ```bash
-   just plan
-   ```
-
-6. **Generate documentation:**
-   ```bash
-   just docs
-   ```
-
-7. **Commit your changes:**
-   ```bash
-   git add .
-   git commit -m "feat: add new infrastructure component"
-   ```
-
-## 📊 Pre-commit Hooks
-
-This template includes pre-commit hooks for:
-
-- **Markdown linting**: Ensures consistent Markdown formatting
-- **Terraform formatting**: Auto-formats Terraform files
-- **Terraform validation**: Validates Terraform syntax
-- **General file checks**: Trailing whitespace, large files, merge conflicts
-
-## 📝 Contributing
-
-1. Follow the existing code structure and naming conventions
-2. Use meaningful commit messages
-3. Run all linting and formatting before committing
-4. Update documentation as needed
-5. Test your changes with `just plan` before applying
-
-## 🔒 Security Best Practices
-
-- Never commit sensitive data (passwords, API keys, etc.)
-- Use Terraform variables for sensitive values
-- Consider using Terraform workspaces for environment separation
-- Review security groups and IAM policies carefully
-
-## 📚 Additional Resources
-
-- [Terraform Documentation](https://www.terraform.io/docs)
-- [Terraform Best Practices](https://www.terraform.io/docs/cloud/guides/recommended-practices.html)
-- [Just Command Runner](https://just.systems/)
-- [Pre-commit Framework](https://pre-commit.com/)
+- This repo can create billable AWS resources (for example NAT Gateways). Review the `terraform/` unit variables and your plan output before applying.
+- For Identity Center: this unit assumes an existing IAM Identity Center instance in the target region. You can override the instance ARN in `terraform/identity-center/envs/*.tfvars` if needed.
 
 ## 📄 License
 
-This project template is open source and available under the [MIT License](LICENSE).
-
----
+This repository is available under the [MIT License](LICENSE).
